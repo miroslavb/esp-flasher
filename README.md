@@ -1,107 +1,110 @@
 # ESP Flasher — flash.miroslav.diy
 
-Веб-прошивальщик ESP32 с каталогами **Bruce**, **Launcher** и **ESP Terminator**,
-серверным прокси прошивок и починкой `LittleFS is full`.
+Web-based ESP32 flasher with **Bruce**, **Launcher** and **ESP Terminator** catalogs,
+a server-side firmware proxy, and a fix for `LittleFS is full`.
 
-Живёт на **https://flash.miroslav.diy**.
+Lives at **https://flash.miroslav.diy**.
 
-## Зачем
+## Why
 
-### 1. «Failed to download firmware: Failed to fetch»
+### 1. "Failed to download firmware: Failed to fetch"
 
-Все публичные веб-прошивальщики скачивают `.bin` прямо из релизов GitHub. GitHub
-отвечает `302` на `release-assets.githubusercontent.com`, и **в этом редиректе нет
-заголовка `Access-Control-Allow-Origin`** — браузер обрывает межсайтовый `fetch()`.
-Страница получает пустую ошибку и починить это на своей стороне не может.
+All public web flashers download `.bin` files straight from GitHub releases. GitHub
+answers with a `302` to `release-assets.githubusercontent.com`, and **that redirect
+carries no `Access-Control-Allow-Origin` header** — so the browser aborts the
+cross-site `fetch()`. The page gets an empty error and cannot fix it on its side.
 
-Проверяется одной командой:
+Verified with a single command:
 
 ```bash
 curl -sI -H "Origin: https://example.com" \
   https://github.com/BruceDevices/firmware/releases/download/1.16/Bruce-CYD-2432S028.bin \
-  | grep -i access-control      # пусто
+  | grep -i access-control      # empty
 ```
 
-Здесь прошивку качает `fw-proxy` на сервере и отдаёт её с того же домена — CORS не
-участвует вообще. Побочные плюсы: кеш на диске (повторная прошивка мгновенная и
-работает при недоступном GitHub) и обход лимита GitHub API 60 запросов/час.
+Here the firmware is fetched by `fw-proxy` on the server and served from the same
+domain — CORS is not involved at all. Side benefits: an on-disk cache (re-flashing
+is instant and works even when GitHub is unreachable) and no GitHub API limit of
+60 requests/hour.
 
-### 2. «LittleFS is full» ([BruceDevices/firmware#2298](https://github.com/BruceDevices/firmware/issues/2298))
+### 2. "LittleFS is full" ([BruceDevices/firmware#2298](https://github.com/BruceDevices/firmware/issues/2298))
 
-Когда LittleFS забита, Bruce показывает красную полосу и блокируется до нажатия
-кнопки — файлы удалить неоткуда. Патч из issue открывает serial-хендлер до экрана
-ошибки, но он требует пересборки прошивки.
+When LittleFS is full, Bruce shows a red bar and blocks until a button is pressed —
+there is nowhere to delete files from. The patch from the issue opens the serial
+handler before the error screen, but it requires rebuilding the firmware.
 
-Кнопка **«Починить LittleFS is full»** решает это без пересборки:
+The **"Fix LittleFS is full"** button solves this without a rebuild:
 
-1. читает таблицу разделов **с самой платы** (`readFlash(0x8000, 0xC00)`);
-2. находит раздел ФС (subtype `0x82 spiffs` / `0x83 littlefs`);
-3. записывает в **этот раздел** `0xFF` — паттерн стёртой флеши.
+1. reads the partition table **from the board itself** (`readFlash(0x8000, 0xC00)`);
+2. finds the filesystem partition (subtype `0x82 spiffs` / `0x83 littlefs`);
+3. fills **that partition** with `0xFF` — the erased-flash pattern.
 
-При следующем старте `setupLittleFS()` не смонтирует ФС, и `main.cpp` вызовет
-`LittleFS.format()` — файловая система становится чистой. Приложение и раздел
-`nvs` (Wi-Fi, настройки) не трогаются. Плюс есть встроенный **serial-монитор** —
-это ровно тот путь восстановления, который описан в issue (`help` и команды сборки).
+On the next boot `setupLittleFS()` fails to mount the FS, and `main.cpp` calls
+`LittleFS.format()` — the filesystem comes up clean. The application and the `nvs`
+partition (Wi-Fi, settings) are untouched. There is also a built-in **serial
+monitor** — exactly the recovery path described in the issue (`help` and the build
+commands).
 
-### 3. CYD: 192 КБ под файлы
+### 3. CYD: 192 KB for files
 
-| Сборка | partition csv | app | LittleFS |
+| Build | partition csv | app | LittleFS |
 |---|---|---|---|
-| `Bruce-CYD-2432S028.bin` | `custom_4Mb_full.csv` | 3,75 МБ | **192 КБ** |
-| `Bruce-LAUNCHER_CYD-2432S028.bin` | `custom_4Mb.csv` | 2,44 МБ | **1,5 МБ** |
+| `Bruce-CYD-2432S028.bin` | `custom_4Mb_full.csv` | 3.75 MB | **192 KB** |
+| `Bruce-LAUNCHER_CYD-2432S028.bin` | `custom_4Mb.csv` | 2.44 MB | **1.5 MB** |
 
-Вариант `LAUNCHER_` собирается с `env_light` (`LITE_VERSION=1`, `-Os`, урезанные
-ИК-протоколы) — иначе не влезает. Это размен функций на место, а не бесплатный
-апгрейд. UI это проговаривает.
+The `LAUNCHER_` variant is built with `env_light` (`LITE_VERSION=1`, `-Os`, trimmed
+IR protocols) — otherwise it does not fit. It is a features-for-space trade-off,
+not a free upgrade. The UI states this explicitly.
 
-## Структура
+## Structure
 
 ```
-server/fwproxy.py         каталоги + прокси бинарников (stdlib, без зависимостей)
+server/fwproxy.py         catalogs + binary proxy (stdlib, no dependencies)
 server/fw-proxy.service   systemd unit (127.0.0.1:8781, ProtectSystem=strict)
-web/index.html            страница
-web/js/app.js             UI, каталог, действия
-web/js/esp.js             всё, что трогает устройство (esptool-js)
-web/js/partitions.js      парсеры таблицы разделов и заголовка образа (чистые)
-web/lib/esptool-bundle.js вендоренный esptool-js 0.5.x
-tools/test-parsers.mjs    прогон парсеров по реальным .bin
-deploy.sh                 раскладка на /var/www/esp-flasher и /opt/fw-proxy
+web/index.html            the page
+web/js/app.js             UI, catalog, actions
+web/js/esp.js             everything that touches the device (esptool-js)
+web/js/partitions.js      partition-table and image-header parsers (pure)
+web/lib/esptool-bundle.js vendored esptool-js 0.5.x
+tools/test-parsers.mjs    run the parsers against real .bin files
+deploy.sh                 rollout to /var/www/esp-flasher and /opt/fw-proxy
 ```
 
-## API прокси
+## Proxy API
 
-| Запрос | Ответ |
+| Request | Response |
 |---|---|
 | `GET /api/health` | `{"ok":true}` |
-| `GET /api/sources` | список источников |
-| `GET /api/catalog?src=bruce\|launcher\|espterminator[&refresh=1]` | нормализованный каталог |
-| `GET /api/bin?u=<url>` | бинарник с того же origin, `X-Fw-Cache: hit\|miss` |
+| `GET /api/sources` | list of sources |
+| `GET /api/catalog?src=bruce\|launcher\|espterminator[&refresh=1]` | normalized catalog |
+| `GET /api/bin?u=<url>` | binary served from the same origin, `X-Fw-Cache: hit\|miss` |
 
-`/api/bin` пускает только `https` и только к хостам из статического списка плюс
-те, что встречаются в текущих каталогах. Кеш — `/var/cache/fw-proxy/bins`,
-LRU-обрезка до 3 ГБ.
+`/api/bin` allows only `https` and only hosts from a static allowlist plus those
+that appear in the current catalogs. Cache — `/var/cache/fw-proxy/bins`,
+LRU-trimmed to 3 GB.
 
-## Деплой
+## Deploy
 
 ```bash
-bash deploy.sh                 # статика + сервис + health-check
-systemctl reload caddy         # если менялся vhost
+bash deploy.sh                 # static files + service + health check
+systemctl reload caddy         # if the vhost changed
 ```
 
-Caddy на NUC — vhost `flash.miroslav.diy` (`/api/*` → `127.0.0.1:8781`, остальное
-статика). На edge домен добавлен в общий host-list, TLS выпускается автоматически.
+Caddy on the NUC serves the `flash.miroslav.diy` vhost (`/api/*` → `127.0.0.1:8781`,
+everything else is static). On the edge the domain is added to the shared host
+list; TLS is issued automatically.
 
-## Проверки
+## Checks
 
 ```bash
-node tools/test-parsers.mjs /tmp/Bruce-CYD-2432S028.bin      # парсеры на реальном образе
+node tools/test-parsers.mjs /tmp/Bruce-CYD-2432S028.bin      # parsers on a real image
 curl -s https://flash.miroslav.diy/api/health
 curl -s "https://flash.miroslav.diy/api/catalog?src=bruce" | head -c 200
 ```
 
-## Ограничения
+## Limitations
 
-* Web Serial есть только в Chrome / Edge / Opera на десктопе и только по `https`.
-* Прошивки принадлежат их авторам — этот сайт их только проксирует и записывает.
-* Логика записи проверена на разборе реальных образов и на прогоне каталогов;
-  запись в железо проверяется только на живой плате.
+* Web Serial is available only in Chrome / Edge / Opera on desktop, and only over `https`.
+* Firmware images belong to their authors — this site only proxies and flashes them.
+* The flashing logic is validated by parsing real images and running the catalogs;
+  actual writes to hardware are only ever verified on a live board.
