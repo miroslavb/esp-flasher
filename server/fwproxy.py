@@ -22,6 +22,7 @@ Stdlib only, no dependencies. Binds to localhost; Caddy terminates TLS.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import os
@@ -51,6 +52,7 @@ BRUCE_REPO = "BruceDevices/firmware"
 LAUNCHER_REPO = "bmorcelli/Launcher"
 LAUNCHER_MANIFEST = "https://bmorcelli.github.io/Launcher/manifest.json"
 ESPTERM_MANIFEST = "https://espterminator.com/firmware/manifest.json"
+WIZARD_BASE = "https://wireless-wizard-flasher.bkenned1.workers.dev/"
 
 # Hosts we will proxy binaries from no matter what the catalogs say.
 STATIC_ALLOWED_HOSTS = {
@@ -63,6 +65,7 @@ STATIC_ALLOWED_HOSTS = {
     "bmorcelli.github.io",
     "espterminator.com",
     "proxy.espterminator.com",
+    "wireless-wizard-flasher.bkenned1.workers.dev",
 }
 # Hosts learned from the catalogs at refresh time (ESP Terminator lists a few
 # vendor-hosted binaries). Guarded by _allow_lock.
@@ -374,6 +377,94 @@ def _build_espterm_catalog() -> dict:
     )
 
 
+def _wizard_group(dev_id: str) -> str:
+    d = dev_id.lower()
+    if d.startswith("cyd"):
+        return "CYD"
+    if d.startswith("xiao"):
+        return "Seeed XIAO"
+    return "Waveshare"
+
+
+def _build_wizard_catalog() -> dict:
+    """Wireless Wizard (bkenned1) — static esp-web-tools site on a Cloudflare Worker.
+
+    The page's <select> is the device list; each device has an esp-web-tools
+    manifest at manifests/<id>.json whose part paths are relative to the
+    manifest itself. The inline DEVICES JS object only adds blurbs/notes, so
+    it is parsed best-effort and is never fatal.
+    """
+    page = _http_get(WIZARD_BASE).decode("utf-8", "replace")
+    options = re.findall(r'<option\s+value="([\w-]+)"\s*>([^<]*)</option>', page)
+
+    meta: dict[str, dict] = {}
+    for m in re.finditer(r"'([\w-]+)'\s*:\s*\{((?:\\.|[^}])*)\}", page):
+        fields = {}
+        for key in ("chip", "ver", "blurb", "note"):
+            fm = re.search(key + r":\s*'((?:\\.|[^'\\])*)'", m.group(2))
+            if fm:
+                fields[key] = re.sub(r"\\(.)", r"\1", fm.group(1))
+        if fields:
+            meta[m.group(1)] = fields
+
+    if not options:  # page redesign fallback: DEVICES keys, then manifest hrefs
+        ids = list(meta) or sorted(set(re.findall(r"manifests/([\w-]+)\.json", page)))
+        options = [(i, i) for i in ids]
+
+    devices: dict[str, dict] = {}
+    for dev_id, label in options:
+        manifest_url = urllib.parse.urljoin(WIZARD_BASE, f"manifests/{dev_id}.json")
+        try:
+            manifest = json.loads(_http_get(manifest_url).decode("utf-8"))
+        except Exception as exc:
+            log.warning("wizard manifest %s unavailable: %s", dev_id, exc)
+            continue
+        files = []
+        family = None
+        for build in manifest.get("builds") or []:
+            family = family or build.get("chipFamily")
+            for part in build.get("parts") or []:
+                path = part.get("path")
+                if not path:
+                    continue
+                files.append(
+                    {
+                        "name": str(path).rsplit("/", 1)[-1],
+                        "url": urllib.parse.urljoin(manifest_url, str(path)),
+                        "offset": _parse_addr(part.get("offset"), 0),
+                        "size": None,
+                    }
+                )
+        if not files:
+            continue
+        info = meta.get(dev_id, {})
+        devices[dev_id] = {
+            "id": dev_id,
+            "name": html.unescape(label).strip() or dev_id,
+            "family": family or info.get("chip") or _guess_family(dev_id),
+            "link": WIZARD_BASE,
+            "group": _wizard_group(dev_id),
+            "note": " ".join(filter(None, (info.get("blurb"), info.get("note")))) or None,
+            "versions": [
+                {
+                    "version": manifest.get("version") or info.get("ver") or "?",
+                    "published": "",
+                    "prerelease": False,
+                    "files": files,
+                }
+            ],
+        }
+    return _pack(
+        "wizard",
+        "Wireless Wizard",
+        WIZARD_BASE,
+        devices,
+        note="Wireless Wizard (bkenned1): сборки для CYD и fleet-нод XIAO/Waveshare. "
+        "На устройство — одна актуальная версия; при первой установке автор рекомендует "
+        "полное стирание (галочка «стереть всю флеш»).",
+    )
+
+
 def _pack(source: str, title: str, homepage: str, devices: dict, note: str = "") -> dict:
     groups: dict[str, list] = {}
     hosts: set[str] = set()
@@ -406,6 +497,7 @@ BUILDERS = {
     "bruce": _build_bruce_catalog,
     "launcher": _build_launcher_catalog,
     "espterminator": _build_espterm_catalog,
+    "wizard": _build_wizard_catalog,
 }
 
 _catalog_locks = {name: threading.Lock() for name in BUILDERS}
@@ -612,6 +704,11 @@ class Handler(BaseHTTPRequestHandler):
                             "id": "espterminator",
                             "title": "ESP Terminator",
                             "homepage": "https://espterminator.com/",
+                        },
+                        {
+                            "id": "wizard",
+                            "title": "Wireless Wizard",
+                            "homepage": WIZARD_BASE,
                         },
                     ]
                 },

@@ -1,7 +1,8 @@
 # ESP Flasher — flash.miroslav.diy
 
-Web-based ESP32 flasher with **Bruce**, **Launcher** and **ESP Terminator** catalogs,
-a server-side firmware proxy, and a fix for `LittleFS is full`.
+Web-based ESP32 flasher with **Bruce**, **Launcher**, **ESP Terminator** and
+**Wireless Wizard** catalogs, a server-side firmware proxy, and a fix for
+`LittleFS is full`.
 
 Lives at **https://flash.miroslav.diy**.
 
@@ -76,7 +77,7 @@ deploy.sh                 rollout to /var/www/esp-flasher and /opt/fw-proxy
 |---|---|
 | `GET /api/health` | `{"ok":true}` |
 | `GET /api/sources` | list of sources |
-| `GET /api/catalog?src=bruce\|launcher\|espterminator[&refresh=1]` | normalized catalog |
+| `GET /api/catalog?src=bruce\|launcher\|espterminator\|wizard[&refresh=1]` | normalized catalog |
 | `GET /api/bin?u=<url>` | binary served from the same origin, `X-Fw-Cache: hit\|miss` |
 
 `/api/bin` allows only `https` and only hosts from a static allowlist plus those

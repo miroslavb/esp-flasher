@@ -14,6 +14,7 @@ const SOURCES = [
   { id: 'bruce', title: 'Bruce', desc: 'bruce.computer' },
   { id: 'launcher', title: 'Launcher', desc: 'bmorcelli' },
   { id: 'espterminator', title: 'ESP Terminator', desc: 'сводный каталог' },
+  { id: 'wizard', title: 'Wireless Wizard', desc: 'bkenned1' },
 ];
 
 const state = {
