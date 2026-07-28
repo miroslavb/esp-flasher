@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP Flasher — Bruce / Launcher / ESP Terminator</title>
+<meta name="description" content="Веб-прошивальщик ESP32 с серверным прокси прошивок (обходит CORS-ошибку «Failed to fetch») и починкой «LittleFS is full» без потери настроек.">
+<link rel="stylesheet" href="./css/style.css?v=1.0.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚡</text></svg>">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="home" href="https://miroslav.diy/">← miroslav.diy</a>
+    <h1>⚡ ESP Flasher</h1>
+    <p class="sub">Прошивки Bruce, Launcher и ESP Terminator — через собственный прокси, без CORS-ошибок. Плюс починка <code>LittleFS is full</code>.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div id="envWarn" class="card warn hidden">
+    <strong>Браузер не поддерживает Web Serial.</strong>
+    <p>Нужен Chrome, Edge или Opera на десктопе и обязательно <b>https</b>. В Firefox и Safari Web Serial нет.</p>
+  </div>
+
+  <!-- ------------------------------------------------------------- step 1 -->
+  <section class="card">
+    <h2><span class="step">1</span> Источник прошивок</h2>
+    <div class="sources" id="sources"></div>
+    <p class="hint" id="sourceNote"></p>
+  </section>
+
+  <!-- ------------------------------------------------------------- step 2 -->
+  <section class="card">
+    <h2><span class="step">2</span> Плата и версия</h2>
+    <div class="grid">
+      <label class="field">
+        <span>Поиск</span>
+        <input id="filter" type="search" placeholder="cyd, 2432S028, cardputer…" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Плата <em id="deviceCount"></em></span>
+        <select id="device"></select>
+      </label>
+      <label class="field">
+        <span>Версия</span>
+        <select id="version"></select>
+      </label>
+    </div>
+    <div id="fileList" class="files"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------- step 3 -->
+  <section class="card">
+    <h2><span class="step">3</span> Подключение</h2>
+    <div class="grid">
+      <label class="field">
+        <span>Скорость</span>
+        <select id="baud">
+          <option value="921600">921600 (быстро)</option>
+          <option value="460800" selected>460800 (рекомендуется)</option>
+          <option value="230400">230400</option>
+          <option value="115200">115200 (надёжно)</option>
+        </select>
+      </label>
+      <label class="check" title="ESP32-C3/C6/S3 со встроенным USB-Serial/JTAG: смена скорости на лету ломает запись">
+        <input type="checkbox" id="nativeUsb"> Нативный USB (C3/C6/S3 без USB-UART)
+      </label>
+      <label class="check" title="Стереть всю флеш перед записью: удаляет и Wi-Fi-настройки, и файлы">
+        <input type="checkbox" id="eraseAll"> Стереть всю флеш перед прошивкой
+      </label>
+    </div>
+    <div class="actions">
+      <button id="btnInspect" class="btn">🔎 Подключиться и прочитать разделы</button>
+      <button id="btnFlash" class="btn primary">⚡ Прошить</button>
+      <button id="btnFixFs" class="btn fix">🩹 Починить «LittleFS is full»</button>
+      <button id="btnErase" class="btn danger">🧨 Стереть всю флеш</button>
+      <button id="btnConsole" class="btn">🖥 Serial-монитор</button>
+    </div>
+    <div id="progressWrap" class="progress hidden"><div id="progressBar"></div></div>
+    <p id="status" class="status">Готов. Подключите плату по USB.</p>
+  </section>
+
+  <!-- ------------------------------------------------------------- results -->
+  <section class="card hidden" id="partCard">
+    <h2>Таблица разделов устройства</h2>
+    <table class="parts"><thead><tr><th>Раздел</th><th>Тип</th><th>Смещение</th><th>Размер</th></tr></thead>
+    <tbody id="partBody"></tbody></table>
+    <div id="partAdvice"></div>
+  </section>
+
+  <section class="card hidden" id="consoleCard">
+    <h2>Serial-монитор <span class="pill">115200</span></h2>
+    <p class="hint">Способ восстановления из <a href="https://github.com/BruceDevices/firmware/issues/2298" target="_blank" rel="noopener">issue&nbsp;#2298</a>: подключиться по USB и удалить лишние файлы командами прошивки. Наберите <code>help</code>, чтобы увидеть список команд вашей сборки.</p>
+    <pre id="consoleOut" class="log"></pre>
+    <form id="consoleForm" class="console-input">
+      <input id="consoleLine" type="text" placeholder="команда и Enter…" autocomplete="off" spellcheck="false">
+      <button class="btn" type="submit">Отправить</button>
+      <button class="btn" type="button" id="btnHelp">help</button>
+      <button class="btn" type="button" id="btnConsoleClose">Отключить</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Журнал</h2>
+    <pre id="log" class="log"></pre>
+  </section>
+
+  <!-- ------------------------------------------------------------- docs -->
+  <section class="card doc">
+    <h2>Почему публичные прошивальщики пишут «Failed to fetch»</h2>
+    <p>Ссылка на релиз GitHub отвечает редиректом <code>302</code> на
+    <code>release-assets.githubusercontent.com</code>, и в этом ответе <b>нет</b> заголовка
+    <code>Access-Control-Allow-Origin</code>. Браузер обрывает межсайтовый <code>fetch()</code> —
+    страница получает пустую ошибку «Failed to fetch» и ничего не может с этим сделать.
+    Здесь прошивку скачивает сервер и отдаёт её с того же домена, поэтому CORS не участвует.
+    Скачанное кешируется — повторная прошивка идёт мгновенно и работает, даже если GitHub недоступен.</p>
+
+    <h2>Что делает кнопка «Починить LittleFS is full»</h2>
+    <p>Читает таблицу разделов с самой платы (флеш, смещение <code>0x8000</code>), находит раздел
+    файловой системы и забивает <b>только его</b> байтами <code>0xFF</code>. При следующем старте
+    <code>setupLittleFS()</code> не смонтирует испорченную ФС, и Bruce сам вызовет
+    <code>LittleFS.format()</code> — получается чистая пустая файловая система.
+    Прошивка и раздел <code>nvs</code> (Wi-Fi, настройки) остаются нетронутыми.</p>
+
+    <h2>CYD и 192 КБ</h2>
+    <p>Обычная сборка <code>Bruce-CYD-*.bin</code> собрана по <code>custom_4Mb_full.csv</code>:
+    приложение 3,75 МБ, а под файлы остаётся <b>192 КБ</b> — забивается очень быстро.
+    Вариант <code>Bruce-LAUNCHER_CYD-*.bin</code> (раскладка <code>custom_4Mb.csv</code>) даёт
+    <b>1,5 МБ</b> под LittleFS, но платит за это функциональностью: в <code>platformio.ini</code> он
+    собирается с <code>env_light</code> (<code>LITE_VERSION=1</code>, <code>-Os</code>, урезанный набор
+    ИК-протоколов), иначе прошивка не влезает в раздел приложения 2,44 МБ.
+    Так что это размен «места под файлы» на «часть функций» — выбирайте осознанно.
+    Оба образа слитые и прошиваются целиком по адресу <code>0x0</code>.</p>
+  </section>
+
+</main>
+
+<footer class="wrap foot">
+  <p>Прошивки принадлежат их авторам:
+    <a href="https://bruce.computer/flasher" target="_blank" rel="noopener">Bruce</a> ·
+    <a href="https://bmorcelli.github.io/Launcher/webflasher.html" target="_blank" rel="noopener">Launcher</a> ·
+    <a href="https://espterminator.com/" target="_blank" rel="noopener">ESP Terminator</a>.
+    Этот сайт их только проксирует и записывает. Работает на esptool-js + Web Serial.</p>
+</footer>
+
+<script type="module" src="./js/app.js?v=1.0.0"></script>
+</body>
+</html>

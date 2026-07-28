@@ -1,0 +1,25 @@
+[Unit]
+Description=fw-proxy — firmware catalog + binary proxy for flash.miroslav.diy
+Documentation=https://github.com/miroslavb/esp-flasher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/fw-proxy/fwproxy.py
+Environment=FWPROXY_HOST=127.0.0.1
+Environment=FWPROXY_PORT=8781
+Environment=FWPROXY_CACHE=/var/cache/fw-proxy
+Restart=always
+RestartSec=5
+# Read-only system except its own cache — it only ever fetches and re-serves files.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=/var/cache/fw-proxy
+StateDirectory=fw-proxy
+CacheDirectory=fw-proxy
+
+[Install]
+WantedBy=multi-user.target
