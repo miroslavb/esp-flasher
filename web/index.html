@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ESP Flasher — Bruce / Launcher / ESP Terminator / Wireless Wizard</title>
-<meta name="description" content="Веб-прошивальщик ESP32 с серверным прокси прошивок (обходит CORS-ошибку «Failed to fetch») и починкой «LittleFS is full» без потери настроек.">
-<link rel="stylesheet" href="./css/style.css?v=1.0.0">
+<title>ESP Flasher — Bruce / Launcher / ESP Terminator / Wireless Wizard / HaleHound</title>
+<meta name="description" content="Веб-прошивальщик ESP32 с серверным прокси прошивок (обходит CORS-ошибку «Failed to fetch»), официальным переходом к HaleHound и починкой «LittleFS is full» без потери настроек.">
+<link rel="stylesheet" href="./css/style.css?v=1.0.1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚡</text></svg>">
 </head>
 <body>
@@ -13,7 +13,7 @@
   <div class="wrap">
     <a class="home" href="https://miroslav.diy/">← miroslav.diy</a>
     <h1>⚡ ESP Flasher</h1>
-    <p class="sub">Прошивки Bruce, Launcher, ESP Terminator и Wireless Wizard — через собственный прокси, без CORS-ошибок. Плюс починка <code>LittleFS is full</code>.</p>
+    <p class="sub">Прошивки Bruce, Launcher, ESP Terminator и Wireless Wizard — через собственный прокси, без CORS-ошибок. HaleHound открывается в официальном прошивальщике. Плюс починка <code>LittleFS is full</code>.</p>
   </div>
 </header>
 
@@ -133,6 +133,10 @@
     ИК-протоколов), иначе прошивка не влезает в раздел приложения 2,44 МБ.
     Так что это размен «места под файлы» на «часть функций» — выбирайте осознанно.
     Оба образа слитые и прошиваются целиком по адресу <code>0x0</code>.</p>
+
+    <h2>HaleHound</h2>
+    <p>HaleHound открывается в <a href="https://flash.halehound.com/" target="_blank" rel="noopener noreferrer">официальном прошивальщике</a>.
+    Его автор проверяет пользователя перед выдачей манифеста и сверяет SHA-256 образов, поэтому этот сайт намеренно не проксирует и не обходит эту проверку.</p>
   </section>
 
 </main>
@@ -142,10 +146,11 @@
     <a href="https://bruce.computer/flasher" target="_blank" rel="noopener">Bruce</a> ·
     <a href="https://bmorcelli.github.io/Launcher/webflasher.html" target="_blank" rel="noopener">Launcher</a> ·
     <a href="https://espterminator.com/" target="_blank" rel="noopener">ESP Terminator</a> ·
-    <a href="https://wireless-wizard-flasher.bkenned1.workers.dev/" target="_blank" rel="noopener">Wireless Wizard</a>.
-    Этот сайт их только проксирует и записывает. Работает на esptool-js + Web Serial.</p>
+    <a href="https://wireless-wizard-flasher.bkenned1.workers.dev/" target="_blank" rel="noopener">Wireless Wizard</a> ·
+    <a href="https://flash.halehound.com/" target="_blank" rel="noopener noreferrer">HaleHound</a>.
+    Этот сайт проксирует доступные каталоги и открывает HaleHound у автора. Работает на esptool-js + Web Serial.</p>
 </footer>
 
-<script type="module" src="./js/app.js?v=1.0.0"></script>
+<script type="module" src="./js/app.js?v=1.0.1"></script>
 </body>
 </html>

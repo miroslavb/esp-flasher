@@ -1,8 +1,8 @@
 # ESP Flasher — flash.miroslav.diy
 
 Web-based ESP32 flasher with **Bruce**, **Launcher**, **ESP Terminator** and
-**Wireless Wizard** catalogs, a server-side firmware proxy, and a fix for
-`LittleFS is full`.
+**Wireless Wizard** catalogs, an official **HaleHound** hand-off, a server-side
+firmware proxy, and a fix for `LittleFS is full`.
 
 Lives at **https://flash.miroslav.diy**.
 
@@ -68,6 +68,7 @@ web/js/esp.js             everything that touches the device (esptool-js)
 web/js/partitions.js      partition-table and image-header parsers (pure)
 web/lib/esptool-bundle.js vendored esptool-js 0.5.x
 tools/test-parsers.mjs    run the parsers against real .bin files
+tools/test-halehound-ui.mjs browser test for the official HaleHound hand-off
 deploy.sh                 rollout to /var/www/esp-flasher and /opt/fw-proxy
 ```
 
@@ -99,9 +100,19 @@ list; TLS is issued automatically.
 
 ```bash
 node tools/test-parsers.mjs /tmp/Bruce-CYD-2432S028.bin      # parsers on a real image
+node tools/test-halehound-ui.mjs                             # official HaleHound link + security boundary
 curl -s https://flash.miroslav.diy/api/health
 curl -s "https://flash.miroslav.diy/api/catalog?src=bruce" | head -c 200
 ```
+
+## HaleHound boundary
+
+The HaleHound source card deliberately opens the official
+[`flash.halehound.com`](https://flash.halehound.com/) installer instead of using
+`fw-proxy`. Its publisher protects board manifests and firmware downloads with a
+per-user human-verification token and validates SHA-256 firmware fingerprints.
+Do not add a proxy adapter, mirror, token replay, or any other bypass: the direct
+official hand-off preserves both of those upstream controls.
 
 ## Limitations
 

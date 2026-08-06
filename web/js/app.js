@@ -15,6 +15,9 @@ const SOURCES = [
   { id: 'launcher', title: 'Launcher', desc: 'bmorcelli' },
   { id: 'espterminator', title: 'ESP Terminator', desc: 'сводный каталог' },
   { id: 'wizard', title: 'Wireless Wizard', desc: 'bkenned1' },
+  // HaleHound protects board manifests and firmware downloads with a per-user
+  // human-verification token. Preserve that control with an official hand-off.
+  { id: 'halehound', title: 'HaleHound', desc: 'официальный прошивальщик', href: 'https://flash.halehound.com/' },
 ];
 
 const state = {
@@ -115,11 +118,18 @@ async function loadCatalog(src) {
 function renderSources() {
   $('sources').innerHTML = '';
   for (const s of SOURCES) {
-    const b = document.createElement('button');
-    b.type = 'button';
+    const b = document.createElement(s.href ? 'a' : 'button');
     b.className = 'source' + (s.id === state.source ? ' on' : '');
+    b.setAttribute('aria-label', `${s.title} ${s.desc}`);
     b.innerHTML = `<strong>${s.title}</strong><span>${s.desc}</span>`;
-    b.onclick = () => loadCatalog(s.id);
+    if (s.href) {
+      b.href = s.href;
+      b.target = '_blank';
+      b.rel = 'noopener noreferrer';
+    } else {
+      b.type = 'button';
+      b.onclick = () => loadCatalog(s.id);
+    }
     $('sources').appendChild(b);
   }
 }
