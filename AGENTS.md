@@ -1,11 +1,15 @@
-# ESP Flasher change controls
+# ESP Flasher engineering rules
 
-- Add an upstream firmware source only after verifying its official distribution,
-  supported images, and intended lawful use.
-- Do not proxy, mirror, distribute, or link from this flasher to firmware that
-  advertises wireless disruption/jamming, unauthorized replay or access, payload
-  delivery, credential/data exfiltration, or comparable harmful capabilities.
-- Keep upstream catalog support constrained to the normalizer and same-origin
-  binary proxy in `server/fwproxy.py`; preserve its host allow-list checks.
-- Before deployment, run the focused UI/API checks and verify the live site plus
-  `fw-proxy.service` health.
+- The owner explicitly permits adding red-teaming / offensive-security firmware
+  sources (e.g. HaleHound) to this page. Decision recorded 2026-08-06.
+- The catalog sources (`bruce`, `launcher`, `espterminator`, `wizard`) are
+  normalized by `server/fwproxy.py` and their firmware files are served through
+  the same-origin binary proxy.
+- The HaleHound source is intentionally an external official hand-off at
+  `https://flash.halehound.com/`. Its publisher gates board manifests/downloads
+  behind human verification and validates firmware SHA-256 fingerprints. Never
+  proxy, mirror, replay, or bypass that protection.
+- Before shipping a HaleHound UI change, run
+  `node tools/test-halehound-ui.mjs`; then browser-check the rendered link on
+  `https://flash.miroslav.diy/` after deployment.
+- Deploy with `bash deploy.sh`; it is idempotent and does not alter Caddy.

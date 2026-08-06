@@ -70,6 +70,7 @@ body {
   border-radius: 10px;
   padding: 12px 14px;
   color: var(--text);
+  text-decoration: none;
   cursor: pointer;
   text-align: left;
   display: grid;
