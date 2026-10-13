@@ -127,7 +127,7 @@ try {
     active: document.querySelector('#sources .source.on strong')?.textContent,
     ownHidden: document.getElementById('ownCards').classList.contains('hidden'),
   })`);
-  assert.deepEqual(plain.sources, ['Bruce', 'Launcher', 'ESP Terminator', 'Wireless Wizard', 'Мои прошивки', 'HaleHound']);
+  assert.deepEqual(plain.sources, ['Bruce', 'Launcher', 'ESP Terminator', 'Wireless Wizard', 'Мои прошивки', 'HaleHound', 'Capybara Pet']);
   assert.equal(plain.active, 'Bruce');
   assert.equal(plain.ownHidden, true);
   console.log('default page unchanged (Bruce first, own cards hidden): OK');

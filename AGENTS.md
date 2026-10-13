@@ -18,3 +18,11 @@
   in the `KEEP` list of `deploy.sh` so `rsync --delete` never erases them, and
   run `node tools/test-own-firmware.mjs` / `node tools/test-own-ui.mjs` after
   touching the own-firmware source.
+- `/capybara/` is the Capybara Pet flasher (CrowPanel ESP32-C3 1.28"), served from its
+  own static root `/var/www/capybara-flash` by a separate front block, deployed from
+  `/root/capybara-pet` (`tools/build-flasher-site.sh`) and hermes-housekeeping
+  `network/cubi-host/front/capybara-flash/`. This page only links to it (a same-site
+  source tile that opens in place, plus header/info/footer links); never route its
+  firmware through `/fw/` or a merged image here, because its own page keeps the
+  pet's NVS/save regions and writes the browser clock. Run
+  `node tools/test-halehound-ui.mjs` after touching the source tiles.

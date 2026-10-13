@@ -50,6 +50,15 @@ try {
   })())`]);
   const decoded = JSON.parse(raw);
   const link = typeof decoded === 'string' ? JSON.parse(decoded) : decoded;
+  const evalCapybara = () => {
+    const out = JSON.parse(browser(['eval', `JSON.stringify((() => {
+      const a = Array.from(document.querySelectorAll('#sources a.source'))
+        .find((element) => element.textContent.includes('Capybara Pet'));
+      return a && { path: new URL(a.href).pathname, target: a.target, rel: a.rel,
+        ariaLabel: a.getAttribute('aria-label') };
+    })())`]));
+    return typeof out === 'string' ? JSON.parse(out) : out;
+  };
 
   assert.deepEqual(link, {
     href: 'https://flash.halehound.com/',
@@ -58,6 +67,16 @@ try {
     ariaLabel: 'HaleHound официальный прошивальщик',
   });
   console.log('HaleHound official hand-off: OK');
+
+  // Same-site Capybara Pet flasher: a plain in-tab link to /capybara/.
+  const capy = evalCapybara();
+  assert.deepEqual(capy, {
+    path: '/capybara/',
+    target: '',
+    rel: '',
+    ariaLabel: 'Capybara Pet CrowPanel 1.28″ · свой прошивальщик',
+  });
+  console.log('Capybara Pet same-site link: OK');
 } finally {
   try { browser(['close']); } catch { /* best-effort cleanup */ }
   staticServer.kill('SIGTERM');

@@ -21,6 +21,9 @@ const SOURCES = [
   // HaleHound protects board manifests and firmware downloads with a per-user
   // human-verification token. Preserve that control with an official hand-off.
   { id: 'halehound', title: 'HaleHound', desc: 'официальный прошивальщик', href: 'https://flash.halehound.com/' },
+  // Capybara Pet (CrowPanel ESP32-C3 1.28") has its own flasher on this host: it keeps
+  // the pet's saves/NVS and writes the browser clock, which a merged image here would not.
+  { id: 'capybara', title: 'Capybara Pet', desc: 'CrowPanel 1.28″ · свой прошивальщик', href: '/capybara/' },
 ];
 
 const state = {
@@ -200,8 +203,11 @@ function renderSources() {
     b.innerHTML = `<strong>${s.title}</strong><span>${s.desc}</span>`;
     if (s.href) {
       b.href = s.href;
-      b.target = '_blank';
-      b.rel = 'noopener noreferrer';
+      // Off-site hand-offs open in a new tab; same-site flashers open in place.
+      if (/^https?:\/\//.test(s.href)) {
+        b.target = '_blank';
+        b.rel = 'noopener noreferrer';
+      }
     } else {
       b.type = 'button';
       b.onclick = async () => {
