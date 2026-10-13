@@ -1,8 +1,9 @@
 # ESP Flasher — flash.miroslav.diy
 
 Web-based ESP32 flasher with **Bruce**, **Launcher**, **ESP Terminator** and
-**Wireless Wizard** catalogs, an official **HaleHound** hand-off, a server-side
-firmware proxy, and a fix for `LittleFS is full`.
+**Wireless Wizard** catalogs, an official **HaleHound** hand-off, the owner's
+**own firmware builds** ("Мои прошивки"), a server-side firmware proxy, and a fix
+for `LittleFS is full`.
 
 Lives at **https://flash.miroslav.diy**.
 
@@ -66,8 +67,11 @@ web/index.html            the page
 web/js/app.js             UI, catalog, actions
 web/js/esp.js             everything that touches the device (esptool-js)
 web/js/partitions.js      partition-table and image-header parsers (pure)
+web/js/own.js             own-firmware manifest + verified same-origin download (pure)
 web/lib/esptool-bundle.js vendored esptool-js 0.5.x
 tools/test-parsers.mjs    run the parsers against real .bin files
+tools/test-own-firmware.mjs unit checks: image-header probe (C3/ESP32/P4), manifest, downloads
+tools/test-own-ui.mjs     browser test for the own-firmware cards and deep link
 tools/test-halehound-ui.mjs browser test for the official HaleHound hand-off
 deploy.sh                 rollout to /var/www/esp-flasher and /opt/fw-proxy
 ```
@@ -85,12 +89,81 @@ deploy.sh                 rollout to /var/www/esp-flasher and /opt/fw-proxy
 that appear in the current catalogs. Cache — `/var/cache/fw-proxy/bins`,
 LRU-trimmed to 3 GB.
 
+## Own firmware ("Мои прошивки")
+
+The owner's own builds are plain static files in the web root, deployed by the
+project repos that own them (not by this repo):
+
+```
+/fw/manifest.json                  list of builds (format below)
+/fw/<project>/<image>.bin          merged images
+/<project>/                        project pages linked from the cards
+                                   (e.g. /sleep-radar/ setup page, /sleep-radar/wiring.html)
+```
+
+They are same-origin, so `fw-proxy` is not involved: the front end reads
+`/fw/manifest.json` itself (`web/js/own.js`) and flashes through the same
+esptool-js path as every other source. A server-side builder in `fwproxy.py`
+was rejected on purpose: it would add a second copy of the web-root path to the
+proxy, make own builds depend on the proxy being up, and route local files
+through a component whose job is fetching remote ones.
+
+Manifest format (`schema` 1; unknown keys are ignored):
+
+```jsonc
+{
+  "schema": 1,
+  "firmwares": [
+    {
+      "id": "sleep-radar-c3",              // [A-Za-z0-9._-], unique; used by the deep link
+      "project": "Sleep Radar",            // card group
+      "title": "Sleep Radar — датчик (ESP32-C3)",
+      "chip": "ESP32-C3",                  // esptool CHIP_NAME; must match the image header
+      "version": "1.0.0",
+      "date": "2026-10-13",
+      "file": "sleep-radar/sleep-radar-c3-1.0.0.bin",  // relative to /fw/, no "..", no scheme
+      "offset": 0,                         // integer or "0x…"
+      "size": 1234567,                     // null until published
+      "sha256": "…64 hex…",                // null until published
+      "native_usb": true,                  // pre-ticks "Нативный USB" (USB-Serial-JTAG boards)
+      "setup": "/sleep-radar/",            // same-site paths only; shown on the card
+      "wiring": "/sleep-radar/wiring.html",
+      "notes": "…"
+    }
+  ]
+}
+```
+
+Safety checks before anything is written to a board:
+
+* The server answers unknown paths with `index.html` (Caddy `try_files`), so a
+  missing manifest or image arrives as HTML with status 200. Both are rejected by
+  content type; images must also match the manifest's exact `size` and `sha256`
+  (computed in the browser with `crypto.subtle`). Entries with `size`/`sha256`
+  still `null` show their card and links but cannot be flashed.
+* The chip family is read from the image header (`0x0`, `0x1000`, or `0x2000` —
+  the ESP32-P4 bootloader offset, so P4 merged images written at `0x0` are
+  recognised) and compared with esptool-js `CHIP_NAME` of the connected chip.
+
+Deep link: `/?src=own&fw=<id>` opens the source and preselects the entry
+(`?src=` works for every non-external source; `fw` matches the board id there).
+
 ## Deploy
 
 ```bash
-bash deploy.sh                 # static files + service + health check
-systemctl reload caddy         # if the vhost changed
+bash deploy.sh                 # static files only (the default)
+DEPLOY_PROXY=1 bash deploy.sh  # also install + restart the local fw-proxy and health-check it
 ```
+
+In the current deployment the static root is mirrored to the public front proxy
+every few minutes and `fw-proxy` runs on a separate host, so the default deploy
+touches only the static files.
+
+`deploy.sh` runs `rsync --delete` but excludes `/fw/` and `/sleep-radar/` (the
+`KEEP` list), so deploying the flasher never erases the own-firmware files and
+project pages, and those repos can deploy into their own subdirectories
+independently. Add a directory to `KEEP` before another project publishes into
+the web root.
 
 Caddy on the NUC serves the `flash.miroslav.diy` vhost (`/api/*` → `127.0.0.1:8781`,
 everything else is static). On the edge the domain is added to the shared host
@@ -100,6 +173,8 @@ list; TLS is issued automatically.
 
 ```bash
 node tools/test-parsers.mjs /tmp/Bruce-CYD-2432S028.bin      # parsers on a real image
+node tools/test-own-firmware.mjs [/var/www/esp-flasher/fw/manifest.json]  # own builds: unit checks (+ a real manifest)
+node tools/test-own-ui.mjs                                   # own-firmware cards + deep link in a browser
 node tools/test-halehound-ui.mjs                             # official HaleHound link + security boundary
 curl -s https://flash.miroslav.diy/api/health
 curl -s "https://flash.miroslav.diy/api/catalog?src=bruce" | head -c 200

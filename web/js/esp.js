@@ -13,7 +13,7 @@ import {
   PARTITION_TABLE_SIZE,
   parsePartitionTable,
   findFilesystemPartitions,
-} from './partitions.js';
+} from './partitions.js?v=1.1.0';
 
 let sharedPort = null;
 let active = null; // { transport, loader }
@@ -76,7 +76,10 @@ export async function connect({ baud = 460800, nativeUsb = false, terminal } = {
       const loader = new ESPLoader({ transport, ...opts, terminal });
       const chip = await loader.main();
       active = { transport, loader };
-      return { loader, transport, chip, baud: opts.baudrate };
+      // `chip` is a description ("ESP32-C3 (QFN32) (revision v0.4)", or "unknown
+      // ESP32-P4 (…)" for some P4 packages); CHIP_NAME is the exact family name
+      // that image headers are compared against.
+      return { loader, transport, chip, chipName: loader.chip?.CHIP_NAME || null, baud: opts.baudrate };
     } catch (err) {
       lastErr = err;
       try { await release(); } catch { /* ignore */ }

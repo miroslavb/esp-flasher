@@ -81,6 +81,34 @@ body {
 .source:hover { border-color: #48525f; }
 .source.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 
+.own-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.own-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.own-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.own-card .hint { margin: 0; }
+.own-pick {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+}
+.own-ver { color: var(--muted); font-size: 0.85rem; }
+.own-links { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.9rem; }
+
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; align-items: end; }
 .field { display: grid; gap: 5px; font-size: 0.85rem; color: var(--muted); }
 .field em { font-style: normal; opacity: 0.7; }
@@ -100,7 +128,7 @@ select { cursor: pointer; }
 .files { margin-top: 14px; display: grid; gap: 6px; }
 .file {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 14px;
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -109,7 +137,8 @@ select { cursor: pointer; }
   font-size: 0.88rem;
   color: var(--muted);
 }
-.file code { color: var(--text); }
+.file code { color: var(--text); overflow-wrap: anywhere; }
+.hint.sha { overflow-wrap: anywhere; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .btn {

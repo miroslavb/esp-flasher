@@ -7,10 +7,26 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_DST=/var/www/esp-flasher
 SRV_DST=/opt/fw-proxy
 
-echo "==> static site -> $WEB_DST"
+# Paths inside the web root that other repos deploy (own firmware + project
+# pages, e.g. /root/projects/sleep-radar/web). --delete must not erase them.
+KEEP=(fw sleep-radar)
+
+echo "==> static site -> $WEB_DST (keeping: ${KEEP[*]})"
 mkdir -p "$WEB_DST"
-rsync -a --delete "$SRC/web/" "$WEB_DST/"
+EXCLUDES=()
+for d in "${KEEP[@]}"; do EXCLUDES+=(--exclude "/$d/"); done
+rsync -a --delete "${EXCLUDES[@]}" "$SRC/web/" "$WEB_DST/"
 chmod -R a+rX "$WEB_DST"
+
+# The live proxy runs on a separate host in the current deployment and the static
+# root above is mirrored to the public front proxy, so by default only the static
+# site is updated here. DEPLOY_PROXY=1 also installs and (re)starts the local
+# fw-proxy (rollback / single-host setups).
+if [ "${DEPLOY_PROXY:-0}" != "1" ]; then
+  echo "==> proxy skipped (set DEPLOY_PROXY=1 to install/restart the local fw-proxy)"
+  echo "==> done"
+  exit 0
+fi
 
 echo "==> proxy -> $SRV_DST"
 mkdir -p "$SRV_DST" /var/cache/fw-proxy/bins

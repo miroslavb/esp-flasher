@@ -4,8 +4,9 @@ import {
   hasWebSerial, connect, release, choosePort, portChosen, getPort,
   readDevicePartitions, writeParts, wipeFilesystemPartition,
   eraseEverything, reset, SerialConsole,
-} from './esp.js';
-import { inspectImage, findFilesystemPartitions, fmtBytes, fmtHex } from './partitions.js';
+} from './esp.js?v=1.1.0';
+import { inspectImage, findFilesystemPartitions, fmtBytes, fmtHex } from './partitions.js?v=1.1.0';
+import { loadOwnManifest, fetchOwnBinary } from './own.js?v=1.1.0';
 
 const $ = (id) => document.getElementById(id);
 const API = './api';
@@ -15,6 +16,8 @@ const SOURCES = [
   { id: 'launcher', title: 'Launcher', desc: 'bmorcelli' },
   { id: 'espterminator', title: 'ESP Terminator', desc: 'сводный каталог' },
   { id: 'wizard', title: 'Wireless Wizard', desc: 'bkenned1' },
+  // The owner's own builds: static files on this site (/fw/manifest.json), no proxy.
+  { id: 'own', title: 'Мои прошивки', desc: 'собственные сборки' },
   // HaleHound protects board manifests and firmware downloads with a per-user
   // human-verification token. Preserve that control with an official hand-off.
   { id: 'halehound', title: 'HaleHound', desc: 'официальный прошивальщик', href: 'https://flash.halehound.com/' },
@@ -93,26 +96,99 @@ async function withDevice(label, fn) {
 
 // ------------------------------------------------------------------ catalog
 
-async function loadCatalog(src) {
+async function loadCatalog(src, preselect = null) {
   state.source = src;
   state.catalog = null;
   $('device').innerHTML = '<option>загружаю…</option>';
   $('version').innerHTML = '';
   $('fileList').innerHTML = '';
+  $('ownCards').innerHTML = '';
+  $('ownCards').classList.toggle('hidden', src !== 'own');
+  if (src === 'own') $('filter').value = ''; // the search box is hidden for own builds
+  $('pickGrid').classList.toggle('hidden', src === 'own');
   renderSources();
   try {
-    const res = await fetch(`${API}/catalog?src=${encodeURIComponent(src)}`);
-    if (!res.ok) throw new Error(`каталог ${res.status}`);
-    state.catalog = await res.json();
+    if (src === 'own') {
+      state.catalog = await loadOwnManifest();
+    } else {
+      const res = await fetch(`${API}/catalog?src=${encodeURIComponent(src)}`);
+      if (!res.ok) throw new Error(`каталог ${res.status}`);
+      state.catalog = await res.json();
+    }
     if (state.catalog.stale) {
       log(`(каталог ${src} отдан из кеша: ${state.catalog.error || 'источник недоступен'})`);
     }
     $('sourceNote').textContent = state.catalog.note || '';
     renderDevices();
+    if (preselect) selectDeviceById(preselect);
+    if (src === 'own') renderOwnCards();
   } catch (err) {
     $('device').innerHTML = '<option>ошибка загрузки</option>';
+    $('pickGrid').classList.remove('hidden');
     setStatus(`Не удалось загрузить каталог: ${err.message}`, 'err');
   }
+}
+
+/** Deep link support: /?src=own&fw=sleep-radar-c3 preselects that entry. */
+function selectDeviceById(id) {
+  const idx = state.devices.findIndex((d) => d.id === id);
+  if (idx < 0) {
+    setStatus(`Прошивка «${id}» в этом источнике не найдена — выберите вручную.`, 'warn');
+    return;
+  }
+  $('device').value = String(idx);
+  onDeviceChange();
+}
+
+/** Keep the address bar shareable after a user picks a source or board. */
+function syncUrl() {
+  const q = new URLSearchParams({ src: state.source });
+  if (state.device) q.set('fw', state.device.id);
+  history.replaceState(null, '', `?${q}`);
+}
+
+// Own builds are few, so they are shown as cards with their setup/wiring pages.
+function renderOwnCards() {
+  const box = $('ownCards');
+  box.innerHTML = '';
+  state.devices.forEach((d, idx) => {
+    const card = document.createElement('div');
+    card.className = 'own-card' + (d === state.device ? ' on' : '');
+    card.dataset.fw = d.id;
+    const v = d.versions[0];
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'own-pick';
+    head.innerHTML = '<strong></strong><span class="pill"></span><span class="own-ver"></span>';
+    head.querySelector('strong').textContent = d.name;
+    head.querySelector('.pill').textContent = d.chip || '?';
+    head.querySelector('.own-ver').textContent = d.published ? `v${v.version}` : `v${v.version} · ещё не опубликована`;
+    head.onclick = () => {
+      $('device').value = String(idx);
+      onDeviceChange();
+      syncUrl();
+    };
+    card.appendChild(head);
+    if (d.note) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = d.note;
+      card.appendChild(p);
+    }
+    const links = document.createElement('div');
+    links.className = 'own-links';
+    if (d.links.setup) links.appendChild(ownLink(d.links.setup, 'Настройка Wi-Fi/MQTT'));
+    if (d.links.wiring) links.appendChild(ownLink(d.links.wiring, 'Схема подключения'));
+    if (links.children.length) card.appendChild(links);
+    box.appendChild(card);
+  });
+}
+
+function ownLink(href, text) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.textContent = text;
+  return a;
 }
 
 function renderSources() {
@@ -128,7 +204,11 @@ function renderSources() {
       b.rel = 'noopener noreferrer';
     } else {
       b.type = 'button';
-      b.onclick = () => loadCatalog(s.id);
+      b.onclick = async () => {
+        state.device = null;
+        await loadCatalog(s.id);
+        syncUrl();
+      };
     }
     $('sources').appendChild(b);
   }
@@ -175,6 +255,11 @@ function onDeviceChange() {
   const vs = $('version');
   vs.innerHTML = '';
   if (!d) return;
+  if (state.source === 'own') {
+    // Own builds declare whether the board talks over the chip's native USB.
+    $('nativeUsb').checked = d.nativeUsb;
+    for (const c of $('ownCards').children) c.classList.toggle('on', c.dataset.fw === d.id);
+  }
   d.versions.forEach((v, i) => {
     const o = document.createElement('option');
     o.value = String(i);
@@ -197,8 +282,14 @@ function onVersionChange() {
     row.innerHTML =
       `<code>${f.name}</code><span>→ ${fmtHex(f.offset)}</span><span>${f.size ? fmtBytes(f.size) : ''}</span>`;
     box.appendChild(row);
+    if (f.local) {
+      const sum = document.createElement('p');
+      sum.className = 'hint sha';
+      sum.textContent = f.sha256 ? `SHA-256: ${f.sha256}` : 'Файл ещё не опубликован — прошить пока нельзя.';
+      box.appendChild(sum);
+    }
   }
-  if (state.device.note) {
+  if (state.device.note && state.source !== 'own') { // own builds show the note on their card
     const n = document.createElement('p');
     n.className = 'hint';
     n.textContent = state.device.note;
@@ -223,6 +314,12 @@ async function downloadParts(onNote) {
   const parts = [];
   for (const f of state.version.files) {
     onNote?.(`Скачиваю ${f.name}…`);
+    if (f.local) {
+      const buf = await fetchOwnBinary(f);
+      log(`  ${f.name} → ${fmtHex(f.offset)} · ${fmtBytes(buf.length)} · SHA-256 совпал`);
+      parts.push({ data: buf, address: f.offset, name: f.name });
+      continue;
+    }
     const res = await fetch(`${API}/bin?u=${encodeURIComponent(f.url)}`);
     if (!res.ok) {
       let detail = `${res.status}`;
@@ -235,6 +332,16 @@ async function downloadParts(onNote) {
     parts.push({ data: buf, address: f.offset, name: f.name });
   }
   return parts;
+}
+
+/**
+ * Exact family match (CHIP_NAME from esptool-js). The description string is only
+ * a fallback: "ESP32-S3 (QFN56)".startsWith("ESP32") would wrongly accept an
+ * ESP32 image, and some P4 packages describe themselves as "unknown ESP32-P4".
+ */
+function chipMatches(want, { chip, chipName }) {
+  if (chipName) return chipName.toUpperCase() === want.toUpperCase();
+  return String(chip).toUpperCase().startsWith(want.toUpperCase());
 }
 
 // ------------------------------------------------------------------ partitions UI
@@ -288,16 +395,22 @@ function inspectAction() {
 
 function flashAction() {
   if (!state.version) { alert('Сначала выберите плату и версию.'); return; }
+  if (state.source === 'own' && !state.device.published) {
+    alert('Эта сборка ещё не опубликована на сайте — прошить пока нечего.');
+    return;
+  }
   const eraseAll = $('eraseAll').checked;
   if (eraseAll && !confirm('Стереть ВСЮ флеш перед прошивкой? Пропадут Wi-Fi-настройки и все файлы.')) return;
 
-  return withDevice('Прошивка', async ({ loader, chip }) => {
+  return withDevice('Прошивка', async ({ loader, chip, chipName }) => {
     const parts = await downloadParts((m) => setStatus(m, 'work'));
 
     // Chip sanity check from the image header itself — no guessing by name.
     const info = inspectImage(parts[0].data, parts[0].address);
-    if (info.header?.chipName && !String(chip).toUpperCase().startsWith(info.header.chipName.toUpperCase())) {
-      if (!confirm(`Прошивка собрана для ${info.header.chipName}, а подключён ${chip}. Всё равно прошить?`)) {
+    const want = info.header?.chipName || (state.source === 'own' ? state.device.chip : null);
+    if (info.header) log(`Образ для ${info.header.chipName ?? `chip id 0x${info.header.chipId.toString(16)}`}, заголовок @ ${fmtHex(info.header.offset)}`);
+    if (want && !chipMatches(want, { chip, chipName })) {
+      if (!confirm(`Прошивка собрана для ${want}, а подключён ${chip}. Всё равно прошить?`)) {
         throw new Error('отменено: чип не совпадает');
       }
     }
@@ -397,11 +510,13 @@ function init() {
     $('envWarn').classList.remove('hidden');
     for (const id of ['btnFlash', 'btnFixFs', 'btnErase', 'btnInspect', 'btnConsole']) $(id).disabled = true;
   }
+  const params = new URLSearchParams(location.search);
+  const wanted = SOURCES.find((s) => s.id === params.get('src') && !s.href);
   renderSources();
-  loadCatalog('bruce');
+  loadCatalog(wanted ? wanted.id : 'bruce', wanted ? params.get('fw') : null);
 
   $('filter').addEventListener('input', () => state.catalog && renderDevices());
-  $('device').addEventListener('change', onDeviceChange);
+  $('device').addEventListener('change', () => { onDeviceChange(); syncUrl(); });
   $('version').addEventListener('change', onVersionChange);
   $('btnInspect').addEventListener('click', inspectAction);
   $('btnFlash').addEventListener('click', flashAction);

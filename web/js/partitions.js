@@ -124,8 +124,9 @@ export function parseImageHeader(buf, at) {
  * Inspect a downloaded firmware image: is it a merged image (bootloader + table
  * + app), which chip is it for, and what partition table does it carry?
  *
- * ESP32/ESP32-S2 keep the bootloader at 0x1000; the newer parts put it at 0x0.
- * A merged image therefore starts either with 0xE9 or with 0xFF padding.
+ * ESP32/ESP32-S2 keep the bootloader at 0x1000, ESP32-P4 at 0x2000; the other
+ * parts put it at 0x0. A merged image therefore starts either with 0xE9 or with
+ * 0xFF padding up to the bootloader.
  * @param {Uint8Array} bytes whole firmware file
  * @param {number} writeAddress the address the file will be written to
  */
@@ -136,7 +137,7 @@ export function inspectImage(bytes, writeAddress = 0) {
     result.header = parseImageHeader(bytes, 0);
     return result;
   }
-  const header = parseImageHeader(bytes, 0) || parseImageHeader(bytes, 0x1000);
+  const header = parseImageHeader(bytes, 0) || parseImageHeader(bytes, 0x1000) || parseImageHeader(bytes, 0x2000);
   result.header = header;
   if (!header) return result;
   if (bytes.length > PARTITION_TABLE_OFFSET + 64) {
